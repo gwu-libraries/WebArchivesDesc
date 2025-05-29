@@ -1,4 +1,5 @@
 import re
+from datetime import datetime
 from asnake.aspace import ASpace
 from config import Config
 import aspace_tools
@@ -11,7 +12,7 @@ aspace = ASpace(
     password=Config.aspace_pass
 )
 
-def update_dates(ao_json, begin_date, end_date, date_expression, config, user):
+def update_dates(ao_json, begin_date, end_date, date_expression, config):
     """
     Update or create the first date subrecord on the archival object JSON.
     Returns True if changes were made, False otherwise.
@@ -45,14 +46,12 @@ def update_dates(ao_json, begin_date, end_date, date_expression, config, user):
             'begin': begin_date,
             'end': end_date,
             'expression': date_expression,
-            'created_by': user,
-            'last_modified_by': user
         }
         ao_json['dates'] = [new_date]
         return True
 
 
-def update_extent(ao_json, new_extent_number, config, user):
+def update_extent(ao_json, new_extent_number, config):
     """
     Update or create extent subrecord on archival object JSON.
     Returns True if changes were made, False otherwise.
@@ -80,18 +79,74 @@ def update_extent(ao_json, new_extent_number, config, user):
             'number': str(new_extent_number),
             'extent_type': extent_type,
             'portion': 'whole',
-            'created_by': user,
-            'last_modified_by': user
         }
         extents.append(new_extent)
         ao_json['extents'] = extents
         return True
+    
+def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
+    """
+    Ensure the parent AO's date range includes the child's date range.
+    If the parent date is missing or narrower, update it and return True.
+    """
+    parent_ref = child_json.get('parent', {}).get('ref')
+    if not parent_ref:
+        return False  # No parent to update
 
+    parent = aspace.client.get(parent_ref).json()
+    parent_dates = parent.get('dates', [])
+    needs_update = False
+
+    if not parent_dates:
+        # No dates exist — create a new one with required fields
+        new_date = {
+            'jsonmodel_type': 'date',
+            'date_type': 'inclusive',
+            'label': 'creation',
+            'begin': begin_date,
+            'end': end_date,
+            'expression': f"{begin_date} - {end_date}" if end_date else begin_date
+        }
+        parent['dates'] = [new_date]
+        needs_update = True
+
+    else:
+        # Update existing date if it doesn't span the child's date
+        date_obj = parent_dates[0]
+        parent_begin = date_obj.get('begin')
+        parent_end = date_obj.get('end')
+
+        if parent_begin:
+            if begin_date < parent_begin:
+                date_obj['begin'] = begin_date
+                needs_update = True
+        else:
+            date_obj['begin'] = begin_date
+            needs_update = True
+
+        if end_date:
+            if not parent_end or end_date > parent_end:
+                date_obj['end'] = end_date
+                needs_update = True
+
+        if needs_update:
+            date_obj['expression'] = f"{date_obj['begin']} - {date_obj.get('end', '')}".strip(" -")
+
+    if needs_update:
+        post_response = aspace.client.post(parent_ref, json=parent)
+        if post_response.status_code == 200:
+            print(f"Updated parent AO: {parent_ref}")
+            return True
+        else:
+            print(f"Failed to update parent AO {parent_ref}. Status: {post_response.status_code}")
+            print(f"Response text: {post_response.text}")
+            return False
+
+    return False
 
 def sync_aos():
     repo_id = Config.aspace_repo
     subject = Config.subject
-    user = Config.aspace_user
 
     seeds = at_tools.get_all_seeds()
     results = aspace_tools.search_ao_by_subject(repo_id, subject)
@@ -138,10 +193,13 @@ def sync_aos():
                 extent = len(records)
 
                 # --- UPDATE DATES ---
-                dates_changed = update_dates(obj_json, begin_date, end_date, date_expression, Config, user)
+                dates_changed = update_dates(obj_json, begin_date, end_date, date_expression, Config)
 
                 # --- UPDATE EXTENTS ---
-                extent_changed = update_extent(obj_json, extent, Config, user)
+                extent_changed = update_extent(obj_json, extent, Config)
+
+                # --- UPDATE PARENT DATES IF NEEDED ---
+                parent_changed = update_parent_dates_if_needed(obj_json, begin_date, end_date, Config)
 
                 if dates_changed or extent_changed:
                     # Save updated archival object back to aspace once per object
