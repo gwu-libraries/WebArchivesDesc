@@ -4,6 +4,7 @@ from asnake.aspace import ASpace
 from config import Config
 import aspace_tools
 import at_tools
+import json
 
 # Initialize ArchivesSpace client once
 aspace = ASpace(
@@ -42,6 +43,7 @@ def update_dates(ao_json, begin_date, end_date, date_expression, config):
         # No date subrecords exist — create one
         new_date = {
             'jsonmodel_type': 'date',
+            'label' :  'creation',
             'date_type': 'inclusive',
             'begin': begin_date,
             'end': end_date,
@@ -202,9 +204,15 @@ def sync_aos():
                 parent_changed = update_parent_dates_if_needed(obj_json, begin_date, end_date, Config)
 
                 if dates_changed or extent_changed:
+                    #debug
+                    print("Posting updated AO:")
+                    print(json.dumps(obj_json, indent=2))
                     # Save updated archival object back to aspace once per object
-                    aspace.client.post(uri, json=obj_json)
+                    response = aspace.client.post(uri, json=obj_json)
                     print(f"Updated archival object {uri}")
+                    #debug
+                    print(f"POST response: {response.status_code}")
+                    print(response.text)
                 else:
                     print(f"No updates needed for {uri}")
 
@@ -212,6 +220,11 @@ def sync_aos():
                 print(f"Begin Date: {begin_date}")
                 print(f"End Date:   {end_date}")
                 print(f"Extent:     {extent} crawls")
+
+                # --- UPDATE DIGITAL OBJECTS ---
+                #construct link to wayback calendar 
+                wayback_uri = at_tools.build_wayback_url(collection_id, note_url)
+                #logic for updating or creating DAO records will go here. 
 
         except Exception as e:
             print(f"Failed to process object {getattr(obj, 'uri', '[No URI]')}: {e}")

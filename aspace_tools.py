@@ -1,6 +1,10 @@
 from asnake.aspace import ASpace
 from config import Config
 import re
+import uuid
+
+def generate_temp_digital_object_id():
+    return f"temp_{uuid.uuid4().hex[:8]}"
 
 # Initialize aspace client once
 aspace = ASpace(
@@ -40,7 +44,7 @@ def extract_notes_by_label_or_type(archival_object, label=None, note_type=None, 
         archival_object (dict): The archival object JSON.
         label (str, optional): The label of the note to match.
         note_type (str, optional): The type of the note to match.
-        label_regex (bool): If True, treat `label` as a regex pattern.
+        label_regex (bool): If True, treat label as a regex pattern.
     
     Returns:
         List[str]: A list of cleaned note contents that match the criteria.

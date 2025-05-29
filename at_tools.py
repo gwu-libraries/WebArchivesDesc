@@ -94,6 +94,9 @@ def summarize_url_activity(url, seeds):
     print(f"End Date:   {get_latest_date(records)}")
     print(f"Extent:     {len(records)} crawls")
 
+def build_wayback_url(collection_id, url):
+    return f"https://wayback.archive-it.org/{collection_id}/*/{url}"
+
 
 if __name__ == "__main__":
     target_url = input("Enter the URL to analyze: ").strip()
