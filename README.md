@@ -1,0 +1,1 @@
+Creates and syncs metadata between Archive-it, the web achiving service used by LAI, and archival description in ArchivesSpace, the content management system used for archival description and discovery.
