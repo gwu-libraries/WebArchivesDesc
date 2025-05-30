@@ -213,6 +213,8 @@ def sync_aos():
                     #debug
                     print(f"POST response: {response.status_code}")
                     print(response.text)
+                    #re-fetch the ao json since we just changed it -- to avoid 409
+                    obj_json = aspace.client.get(uri).json()
                 else:
                     print(f"No updates needed for {uri}")
 
