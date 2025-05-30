@@ -14,7 +14,7 @@ aspace = ASpace(
 )
     
 
-def sync_aos():
+def update_all_webarchive_aos():
     repo_id = Config.aspace_repo
     subject = Config.subject
 
@@ -122,4 +122,4 @@ def sync_aos():
 
 
 if __name__ == "__main__":
-    sync_aos()
+    update_all_webarchive_aos()
