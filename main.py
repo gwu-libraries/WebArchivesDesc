@@ -69,7 +69,15 @@ def sync_aos():
                 extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
 
                 # --- UPDATE PARENT DATES IF NEEDED ---
-                parent_changed = aspace_tools.update_parent_dates_if_needed(obj_json, begin_date, end_date, Config)
+                #update the direct parent of the obj_json (ao)
+                parent_json = aspace_tools.get_parent_json(obj_json)
+                parent_changed = aspace_tools.update_ancestor_dates_if_needed(parent_json, begin_date, end_date)
+                #update the resource record for the AO. 
+                #We only really want to post YYYY - YYYY dates to resource records since that's the SCRC norm.
+                begin_date_year = datetime.strptime(begin_date, "%Y-%m-%d").year
+                end_date_year = datetime.strptime(end_date, "%Y-%m-%d").year
+                resource_json = aspace_tools.get_resource_json(obj_json)    
+                resource_changed = aspace_tools.update_ancestor_dates_if_needed(resource_json, begin_date_year, end_date_year)
 
                 if dates_changed or extent_changed:
                     #debug

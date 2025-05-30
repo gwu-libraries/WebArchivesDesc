@@ -198,19 +198,34 @@ def update_extent(ao_json, new_extent_number, config):
         extents.append(new_extent)
         ao_json['extents'] = extents
         return True
-
-def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
-    """
-    Ensure the parent AO's date range includes the child's date range.
-    If the parent date is missing or narrower, update it and return True.
-    """
+    
+def get_parent_json(child_json):
+    '''Takes a child JSON, finds the parent ref, and retrieves the parent JSON'''
     parent_ref = child_json.get('parent', {}).get('ref')
     if not parent_ref:
         return False  # No parent to update
 
-    parent = aspace.client.get(parent_ref).json()
-    parent_dates = parent.get('dates', [])
+    parent_json = aspace.client.get(parent_ref).json()
+    return parent_json
+
+def get_resource_json(child_json):  
+    resource_ref = child_json.get('resource', {}).get('ref')
+    if not resource_ref:
+        return False
+    resource_json = aspace.client.get(resource_ref).json()
+    return resource_json
+
+def update_ancestor_dates_if_needed(ancestor_json, begin_date, end_date):
+    """
+    Ensure the ancestor (another AO or resource record) range includes the child's date range.
+    If the parent date is missing or narrower, update it and return True.
+    """
+    parent_dates = ancestor_json.get('dates', [])
     needs_update = False
+
+    # Ensure begin and end are strings
+    begin_date = str(begin_date) if begin_date is not None else None
+    end_date = str(end_date) if end_date is not None else None
 
     if not parent_dates:
         # No dates exist — create a new one with required fields
@@ -222,7 +237,7 @@ def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
             'end': end_date,
             'expression': f"{begin_date} - {end_date}" if end_date else begin_date
         }
-        parent['dates'] = [new_date]
+        ancestor_json['dates'] = [new_date]
         needs_update = True
 
     else:
@@ -231,13 +246,10 @@ def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
         parent_begin = date_obj.get('begin')
         parent_end = date_obj.get('end')
 
-        if parent_begin:
-            if begin_date < parent_begin:
+        if begin_date:
+            if not parent_begin or begin_date < parent_begin:
                 date_obj['begin'] = begin_date
                 needs_update = True
-        else:
-            date_obj['begin'] = begin_date
-            needs_update = True
 
         if end_date:
             if not parent_end or end_date > parent_end:
@@ -245,16 +257,17 @@ def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
                 needs_update = True
 
         if needs_update:
-            date_obj['expression'] = f"{date_obj['begin']} - {date_obj.get('end', '')}".strip(" -")
+            expression = date_obj['begin']
+            if 'end' in date_obj and date_obj['end']:
+                expression += f" - {date_obj['end']}"
+            date_obj['expression'] = expression
 
     if needs_update:
-        post_response = aspace.client.post(parent_ref, json=parent)
-        if post_response.status_code == 200:
-            print(f"Updated parent AO: {parent_ref}")
-            return True
+        response = aspace.client.post(ancestor_json['uri'], json=ancestor_json)
+        if response.status_code == 200:
+            print(f"Updated parent AO {ancestor_json['uri']} with expanded date range.")
         else:
-            print(f"Failed to update parent AO {parent_ref}. Status: {post_response.status_code}")
-            print(f"Response text: {post_response.text}")
-            return False
+            print(f"Failed to update parent AO {ancestor_json['uri']}. Status: {response.status_code}")
+            print(response.text)
 
-    return False
+    return needs_update
