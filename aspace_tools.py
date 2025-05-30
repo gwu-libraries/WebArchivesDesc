@@ -126,3 +126,135 @@ def link_dao_to_ao(dao_ref, ao_json, uri):
         print(f"Failed to link DAO to AO. Status: {response.status_code}")
         print(f"Response text: {response.text}")
         return None
+    
+def update_dates(ao_json, begin_date, end_date, date_expression, config):
+    """
+    Update or create the first date subrecord on the archival object JSON.
+    Returns True if changes were made, False otherwise.
+    """
+
+    dates = ao_json.get('dates', [])
+
+    if dates:
+        date_obj = dates[0]
+        needs_update = False
+
+        if date_obj.get('begin') != begin_date:
+            date_obj['begin'] = begin_date
+            needs_update = True
+
+        if date_obj.get('end') != end_date:
+            date_obj['end'] = end_date
+            needs_update = True
+
+        if date_obj.get('expression') != date_expression:
+            date_obj['expression'] = date_expression
+            needs_update = True
+
+        return needs_update
+
+    else:
+        # No date subrecords exist — create one
+        new_date = {
+            'jsonmodel_type': 'date',
+            'label' :  'creation',
+            'date_type': 'inclusive',
+            'begin': begin_date,
+            'end': end_date,
+            'expression': date_expression,
+        }
+        ao_json['dates'] = [new_date]
+        return True
+    
+def update_extent(ao_json, new_extent_number, config):
+    """
+    Update or create extent subrecord on archival object JSON.
+    Returns True if changes were made, False otherwise.
+    """
+
+    extents = ao_json.get('extents', [])
+    extent_type = config.extent_type
+
+    existing_extent = None
+    for extent in extents:
+        if extent.get('extent_type') == extent_type:
+            existing_extent = extent
+            break
+
+    if existing_extent:
+        if existing_extent.get('number') != str(new_extent_number):
+            existing_extent['number'] = str(new_extent_number)
+            return True
+        else:
+            return False
+    else:
+        # Create new extent subrecord
+        new_extent = {
+            'jsonmodel_type': 'extent',
+            'number': str(new_extent_number),
+            'extent_type': extent_type,
+            'portion': 'whole',
+        }
+        extents.append(new_extent)
+        ao_json['extents'] = extents
+        return True
+
+def update_parent_dates_if_needed(child_json, begin_date, end_date, config):
+    """
+    Ensure the parent AO's date range includes the child's date range.
+    If the parent date is missing or narrower, update it and return True.
+    """
+    parent_ref = child_json.get('parent', {}).get('ref')
+    if not parent_ref:
+        return False  # No parent to update
+
+    parent = aspace.client.get(parent_ref).json()
+    parent_dates = parent.get('dates', [])
+    needs_update = False
+
+    if not parent_dates:
+        # No dates exist — create a new one with required fields
+        new_date = {
+            'jsonmodel_type': 'date',
+            'date_type': 'inclusive',
+            'label': 'creation',
+            'begin': begin_date,
+            'end': end_date,
+            'expression': f"{begin_date} - {end_date}" if end_date else begin_date
+        }
+        parent['dates'] = [new_date]
+        needs_update = True
+
+    else:
+        # Update existing date if it doesn't span the child's date
+        date_obj = parent_dates[0]
+        parent_begin = date_obj.get('begin')
+        parent_end = date_obj.get('end')
+
+        if parent_begin:
+            if begin_date < parent_begin:
+                date_obj['begin'] = begin_date
+                needs_update = True
+        else:
+            date_obj['begin'] = begin_date
+            needs_update = True
+
+        if end_date:
+            if not parent_end or end_date > parent_end:
+                date_obj['end'] = end_date
+                needs_update = True
+
+        if needs_update:
+            date_obj['expression'] = f"{date_obj['begin']} - {date_obj.get('end', '')}".strip(" -")
+
+    if needs_update:
+        post_response = aspace.client.post(parent_ref, json=parent)
+        if post_response.status_code == 200:
+            print(f"Updated parent AO: {parent_ref}")
+            return True
+        else:
+            print(f"Failed to update parent AO {parent_ref}. Status: {post_response.status_code}")
+            print(f"Response text: {post_response.text}")
+            return False
+
+    return False
