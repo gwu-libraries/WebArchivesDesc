@@ -205,8 +205,8 @@ def sync_aos():
 
                 if dates_changed or extent_changed:
                     #debug
-                    print("Posting updated AO:")
-                    print(json.dumps(obj_json, indent=2))
+                    #print("Posting updated AO:")
+                    #print(json.dumps(obj_json, indent=2))
                     # Save updated archival object back to aspace once per object
                     response = aspace.client.post(uri, json=obj_json)
                     print(f"Updated archival object {uri}")
@@ -224,8 +224,21 @@ def sync_aos():
                 # --- UPDATE DIGITAL OBJECTS ---
                 #construct link to wayback calendar 
                 wayback_uri = at_tools.build_wayback_url(collection_id, note_url)
-                #logic for updating or creating DAO records will go here. 
-
+                #logic for updating or creating DAO records will go here.
+                dao_instances = aspace_tools.get_digital_object_instance(obj_json)
+                #if no DAO, we can create a new DAO instane and attach it to the AO
+                if dao_instances == None:
+                    print(f"No DAO record attached to {uri} -> Creating DAO to hold Wayback file version!")
+            
+                    new_dao_id = obj_json.get('ref_id') #setting the DAO identifier as the refid of the AO we are attaching to
+                    new_dao_title = (f"Web Archives Replay Calendar - {note_url}")
+                    dao_ref = aspace_tools.create_new_dao(wayback_uri, new_dao_id, new_dao_title , repo_id, obj_json, uri)
+                    aspace_tools.link_dao_to_ao(dao_ref, obj_json, uri)
+                if not dao_instances == None:
+                    print("There's already DAO attached!!")
+                    #check DAO file versions for wayback URI. If not not present, create new DAO to hold wayback URI. If present, we can just pass. 
+        
+                    
         except Exception as e:
             print(f"Failed to process object {getattr(obj, 'uri', '[No URI]')}: {e}")
 
