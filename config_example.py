@@ -22,6 +22,7 @@ class Config:
     data_access_note_scrc = 'This item includes web archives data preserved in the WARC (Web ARChive) file format. To view and interact with these files, you will need to utilize web archival replay tools, like the "Wayback Machine." For alternative access or for obtaining the original WARC files, please contact the Special Collections Research Center. Please note, that WARC files may be large and difficult to work with. Requests for web archives data may take additional time to process.'
     data_access_note_ia = "Direct access to web archives data is not avalaible. This data is managed directly by the Internet Archive and can only be access via replay mechanisms like the Wayback Machine."
 
+    acq_note_label= "Source of Acquisition"
     acq_note_scrc = "This Web Archives data was captured by the GW Web Archives program using Internet Archive's 'Archive-it' service."
     acq_note_ia = "Web Archives data was captured by the Internet Archive, not the GW web archiving program."
 
