@@ -271,3 +271,46 @@ def update_ancestor_dates_if_needed(ancestor_json, begin_date, end_date):
             print(response.text)
 
     return needs_update
+
+def makeMultiNote(obj_dict, note_type, text, label=None):
+    note = {
+        "type": note_type,
+        "jsonmodel_type": "note_multipart",
+        "publish": True,
+        "subnotes": [
+            {"content": text, "jsonmodel_type": "note_text", "publish": True}
+        ]
+    }
+    if label is not None:
+        note["label"] = label
+
+    if "notes" not in obj_dict or obj_dict["notes"] is None:
+        obj_dict["notes"] = [note]
+    else:
+        obj_dict["notes"].append(note)
+
+
+def update_or_create_note(obj_dict, note_type, expected_text, label=None):
+    notes = obj_dict.get("notes", [])
+    updated = False
+
+    for note in notes:
+        if (
+            note.get("type") == note_type
+            and note.get("jsonmodel_type") == "note_multipart"
+            and (label is None or note.get("label") == label)
+        ):
+            for subnote in note.get("subnotes", []):
+                if subnote.get("jsonmodel_type") == "note_text":
+                    if subnote.get("content") != expected_text:
+                        subnote["content"] = expected_text
+                        updated = True
+                        print("Note updated.")
+                    else:
+                        print("Note already matches.")
+                    return  # Exit after first matching note
+
+    # No matching note found — create a new one
+    makeMultiNote(obj_dict, note_type, expected_text, label)
+    print("New note created.")
+

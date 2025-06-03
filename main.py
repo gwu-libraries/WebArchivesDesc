@@ -62,10 +62,30 @@ def update_all_webarchive_aos():
 
                 # --- UPDATE DATES ---
                 dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
-                print(dates_changed)
 
                 # --- UPDATE EXTENTS ---
                 extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
+
+                # --- CHECK AND UPDATE note FIELDS ---
+                #Access Requirements (phystech)
+                aspace_tools.update_or_create_note(
+                    obj_dict=obj_json,
+                    note_type="phystech",
+                    expected_text=Config.data_access_note_scrc,
+                    label=Config.data_access_label
+                )
+
+                # Save the updated record to ArchivesSpace
+                response = aspace.client.post(uri, json=obj_json)
+
+                if response.status_code == 200:
+                    print(f"Updating access req note: {uri}")
+                    #re-fetch the ao json since we just changed it -- to avoid 409
+                    obj_json = aspace.client.get(uri).json()
+                else:
+                    print(f"Failed to update archival object: {response.status_code}")
+                    print(response.text)
+
 
                 # --- UPDATE PARENT DATES IF NEEDED ---
                 #update the direct parent of the obj_json (ao)
