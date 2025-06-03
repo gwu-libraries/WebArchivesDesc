@@ -13,7 +13,6 @@ aspace = ASpace(
     password=Config.aspace_pass
 )
     
-
 def update_all_webarchive_aos():
     repo_id = Config.aspace_repo
     subject = Config.subject
@@ -26,7 +25,6 @@ def update_all_webarchive_aos():
     for obj in results:
         try:
             obj_json = obj.json()
-            title = obj_json.get("title", "[No title]")
             uri = obj.uri
 
             notes = aspace_tools.extract_notes_by_label_or_type(
@@ -64,6 +62,7 @@ def update_all_webarchive_aos():
 
                 # --- UPDATE DATES ---
                 dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
+                print(dates_changed)
 
                 # --- UPDATE EXTENTS ---
                 extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
@@ -71,7 +70,10 @@ def update_all_webarchive_aos():
                 # --- UPDATE PARENT DATES IF NEEDED ---
                 #update the direct parent of the obj_json (ao)
                 parent_json = aspace_tools.get_parent_json(obj_json)
-                parent_changed = aspace_tools.update_ancestor_dates_if_needed(parent_json, begin_date, end_date)
+                if parent_json:
+                    parent_changed = aspace_tools.update_ancestor_dates_if_needed(parent_json, begin_date, end_date)
+                else:
+                    parent_changed = False
                 #update the resource record for the AO. 
                 #We only really want to post YYYY - YYYY dates to resource records since that's the SCRC norm.
                 begin_date_year = datetime.strptime(begin_date, "%Y-%m-%d").year
