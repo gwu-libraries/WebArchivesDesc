@@ -25,6 +25,7 @@ def update_all_webarchive_aos():
     for obj in results:
         try:
             obj_json = obj.json()
+            #print(obj_json) #debug to print AO json
             uri = obj.uri
 
             notes = aspace_tools.extract_notes_by_label_or_type(
@@ -73,6 +74,14 @@ def update_all_webarchive_aos():
                     note_type="phystech",
                     expected_text=Config.data_access_note_scrc,
                     label=Config.data_access_label
+                )
+
+                #Source of Acq note (acqinfo)
+                aspace_tools.update_or_create_note(
+                    obj_dict=obj_json,
+                    note_type="acqinfo",
+                    expected_text=Config.acq_note_scrc,
+                    label=Config.acq_note_label
                 )
 
                 # Save the updated record to ArchivesSpace
