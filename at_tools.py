@@ -97,8 +97,33 @@ def summarize_url_activity(url, seeds):
 def build_wayback_url(collection_id, url):
     return f"https://wayback.archive-it.org/{collection_id}/*/{url}"
 
+def get_seed_metadata(seeds, target_url):
+    target = target_url.rstrip('/')
+    for seed in seeds:
+        seed_url = seed.get('url', '').rstrip('/')
+        canonical_url = seed.get('canonical_url', '').rstrip('/')
+
+        if target in {seed_url, canonical_url}:
+            metadata = seed.get('metadata', {})
+            title = metadata.get('Title', [{}])[0].get('value', '')
+            description = metadata.get('Description', [{}])[0].get('value', '')
+
+            return {
+                'seed_id': seed.get('id'),
+                'url': seed_url,
+                'canonical_url': canonical_url,
+                'collection': seed.get('collection'),
+                'title': title,
+                'description': description,
+                'created_date': seed.get('created_date'),
+                'collector': seed.get('Collector'),
+                'langauge': seed.get('Langauge'),
+            }
+    return None
+
 
 if __name__ == "__main__":
     target_url = input("Enter the URL to analyze: ").strip()
     seeds = get_all_seeds()
     summarize_url_activity(target_url, seeds)
+    print(get_seed_metadata(seeds, target_url))
