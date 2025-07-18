@@ -1,156 +1,140 @@
-import re
-from datetime import datetime
+import argparse
 from asnake.aspace import ASpace
 from config import Config
 import aspace_tools
 import at_tools
-import json
+from datetime import datetime
 
-# Initialize ArchivesSpace client once
+# Initialize ArchivesSpace client
 aspace = ASpace(
     baseurl=Config.aspace_host,
     username=Config.aspace_user,
     password=Config.aspace_pass
 )
-    
+
+
+def process_archival_object(obj_json, seeds, repo_id, subject):
+    uri = obj_json['uri']
+
+    notes = aspace_tools.extract_notes_by_label_or_type(
+        obj_json,
+        label=Config.phystech_label_scrc,
+        note_type="phystech",
+        label_regex=False
+    )
+
+    for note_url in notes:
+        print(f"Note (URL): {note_url}")
+
+        seed = at_tools.find_seed_by_url(seeds, note_url)
+        if seed:
+            collection_id = seed['collection']
+            print(f"Found collection {collection_id} for URL.")
+        else:
+            collection_id = at_tools.infer_collection_from_similar_seeds(seeds, note_url)
+            if collection_id:
+                print(f"Inferred collection {collection_id} for URL.")
+            else:
+                print("Could not determine collection for URL — skipping further processing.")
+                continue
+
+        records = at_tools.fetch_cdx_records(collection_id, note_url)
+        if not records:
+            print("No CDX records found for URL.")
+            continue
+
+        begin_date = at_tools.get_earliest_date(records)
+        end_date = at_tools.get_latest_date(records)
+        date_expression = f"{begin_date} - {end_date}" if end_date else begin_date
+        extent = len(records)
+
+        dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
+        extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
+
+        # Update notes
+        aspace_tools.update_or_create_note(obj_json, "phystech", Config.data_access_note_scrc, Config.data_access_label)
+        aspace_tools.update_or_create_note(obj_json, "acqinfo", Config.acq_note_scrc, Config.acq_note_label)
+
+        # Save the AO
+        response = aspace.client.post(uri, json=obj_json)
+        print(f"Updated archival object {uri}: {response.status_code}")
+        obj_json = aspace.client.get(uri).json()  # Re-fetch to avoid conflicts
+
+        # Update parent and resource record dates
+        parent_json = aspace_tools.get_parent_json(obj_json)
+        if parent_json:
+            aspace_tools.update_ancestor_dates_if_needed(parent_json, begin_date, end_date)
+
+        resource_json = aspace_tools.get_resource_json(obj_json)
+        if resource_json:
+            begin_year = datetime.strptime(begin_date, "%Y-%m-%d").year
+            end_year = datetime.strptime(end_date, "%Y-%m-%d").year
+            aspace_tools.update_ancestor_dates_if_needed(resource_json, begin_year, end_year)
+
+        # Update or create DAO
+        wayback_uri = at_tools.build_wayback_url(collection_id, note_url)
+        dao_instances = aspace_tools.get_digital_object_instance(obj_json)
+
+        if dao_instances is None:
+            print(f"No DAO attached to {uri}. Creating new DAO.")
+            dao_ref = aspace_tools.create_new_dao(wayback_uri, obj_json.get('ref_id'),
+                                                  f"Web Archives Replay Calendar - {note_url}",
+                                                  repo_id, obj_json, uri)
+            aspace_tools.link_dao_to_ao(dao_ref, obj_json, uri)
+        else:
+            print("DAO already exists — skipping DAO creation.")
+
+
 def update_all_webarchive_aos():
     repo_id = Config.aspace_repo
     subject = Config.subject
-
     seeds = at_tools.get_all_seeds()
-    results = aspace_tools.search_ao_by_subject(repo_id, subject)
 
+    results = aspace_tools.search_ao_by_subject(repo_id, subject)
     print(f"Found {len(results)} archival objects for subject '{subject}':\n")
 
     for obj in results:
         try:
             obj_json = obj.json()
-            #print(obj_json) #debug to print AO json
-            uri = obj.uri
-
-            notes = aspace_tools.extract_notes_by_label_or_type(
-                obj_json,
-                label=Config.phystech_label_scrc,
-                note_type="phystech",
-                label_regex=False
-            )
-
-            for note_url in notes:
-                print(f"Note (URL): {note_url}")
-
-                seed = at_tools.find_seed_by_url(seeds, note_url)
-                if seed:
-                    collection_id = seed['collection']
-                    print(f"Found collection {collection_id} for URL.")
-                else:
-                    collection_id = at_tools.infer_collection_from_similar_seeds(seeds, note_url)
-                    if collection_id:
-                        print(f"Inferred collection {collection_id} for URL.")
-                    else:
-                        print("Could not determine collection for URL — skipping further processing.")
-                        continue
-
-                records = at_tools.fetch_cdx_records(collection_id, note_url)
-                if not records:
-                    print("No CDX records found for URL.")
-                    continue
-
-                begin_date = at_tools.get_earliest_date(records)
-                end_date = at_tools.get_latest_date(records)
-
-                date_expression = f"{begin_date} - {end_date}" if end_date else begin_date
-                extent = len(records)
-
-                # --- UPDATE DATES ---
-                dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
-
-                # --- UPDATE EXTENTS ---
-                extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
-
-                # --- CHECK AND UPDATE note FIELDS ---
-                #Access Requirements (phystech)
-                aspace_tools.update_or_create_note(
-                    obj_dict=obj_json,
-                    note_type="phystech",
-                    expected_text=Config.data_access_note_scrc,
-                    label=Config.data_access_label
-                )
-
-                #Source of Acq note (acqinfo)
-                aspace_tools.update_or_create_note(
-                    obj_dict=obj_json,
-                    note_type="acqinfo",
-                    expected_text=Config.acq_note_scrc,
-                    label=Config.acq_note_label
-                )
-
-                # Save the updated record to ArchivesSpace
-                response = aspace.client.post(uri, json=obj_json)
-
-                if response.status_code == 200:
-                    print(f"Updating access req note: {uri}")
-                    #re-fetch the ao json since we just changed it -- to avoid 409
-                    obj_json = aspace.client.get(uri).json()
-                else:
-                    print(f"Failed to update archival object: {response.status_code}")
-                    print(response.text)
-
-
-                # --- UPDATE PARENT DATES IF NEEDED ---
-                #update the direct parent of the obj_json (ao)
-                parent_json = aspace_tools.get_parent_json(obj_json)
-                if parent_json:
-                    parent_changed = aspace_tools.update_ancestor_dates_if_needed(parent_json, begin_date, end_date)
-                else:
-                    parent_changed = False
-                #update the resource record for the AO. 
-                #We only really want to post YYYY - YYYY dates to resource records since that's the SCRC norm.
-                begin_date_year = datetime.strptime(begin_date, "%Y-%m-%d").year
-                end_date_year = datetime.strptime(end_date, "%Y-%m-%d").year
-                resource_json = aspace_tools.get_resource_json(obj_json)    
-                resource_changed = aspace_tools.update_ancestor_dates_if_needed(resource_json, begin_date_year, end_date_year)
-
-                if dates_changed or extent_changed:
-                    #debug
-                    #print("Posting updated AO:")
-                    #print(json.dumps(obj_json, indent=2))
-                    # Save updated archival object back to aspace once per object
-                    response = aspace.client.post(uri, json=obj_json)
-                    print(f"Updated archival object {uri}")
-                    #debug
-                    print(f"POST response: {response.status_code}")
-                    print(response.text)
-                    #re-fetch the ao json since we just changed it -- to avoid 409
-                    obj_json = aspace.client.get(uri).json()
-                else:
-                    print(f"No updates needed for {uri}")
-
-                print(f"Date Expression: {date_expression}")
-                print(f"Begin Date: {begin_date}")
-                print(f"End Date:   {end_date}")
-                print(f"Extent:     {extent} crawls")
-
-                # --- UPDATE DIGITAL OBJECTS ---
-                #construct link to wayback calendar 
-                wayback_uri = at_tools.build_wayback_url(collection_id, note_url)
-                #logic for updating or creating DAO records will go here.
-                dao_instances = aspace_tools.get_digital_object_instance(obj_json)
-                #if no DAO, we can create a new DAO instane and attach it to the AO
-                if dao_instances == None:
-                    print(f"No DAO record attached to {uri} -> Creating DAO to hold Wayback file version!")
-            
-                    new_dao_id = obj_json.get('ref_id') #setting the DAO identifier as the refid of the AO we are attaching to
-                    new_dao_title = (f"Web Archives Replay Calendar - {note_url}")
-                    dao_ref = aspace_tools.create_new_dao(wayback_uri, new_dao_id, new_dao_title , repo_id, obj_json, uri)
-                    aspace_tools.link_dao_to_ao(dao_ref, obj_json, uri)
-                if not dao_instances == None:
-                    print("There's already DAO attached!!")
-                    #check DAO file versions for wayback URI. If not not present, create new DAO to hold wayback URI. If present, we can just pass. 
-        
-                    
+            process_archival_object(obj_json, seeds, repo_id, subject)
         except Exception as e:
             print(f"Failed to process object {getattr(obj, 'uri', '[No URI]')}: {e}")
 
+def update_single_archival_object(refid):
+    repo_id = Config.aspace_repo
+    seeds = at_tools.get_all_seeds()
+
+    try:
+        find_url = f"/repositories/{repo_id}/find_by_id/archival_objects?ref_id[]={refid}"
+        response = aspace.client.get(find_url)
+        response.raise_for_status()
+        results = response.json()
+
+        archival_objects = results.get("archival_objects", [])
+        if len(archival_objects) != 1:
+            print(f"{len(archival_objects)} results found for ref_id '{refid}'. Expected exactly 1.")
+            return
+
+        uri = archival_objects[0]["ref"]
+        print(f"Found archival object: {uri}")
+
+        obj_json = aspace.client.get(uri).json()
+        process_archival_object(obj_json, seeds, repo_id, subject=Config.subject)
+
+    except Exception as e:
+        print(f"Error updating AO with refid '{refid}': {e}")
+
 
 if __name__ == "__main__":
-    update_all_webarchive_aos()
+    parser = argparse.ArgumentParser(description="Sync records that describe web archives in ArchivesSpace using Archive-it intergrations")
+    parser.add_argument("--all", action="store_true", help="Update all web archives records.")
+    parser.add_argument("--refid", type=str, help="Update a single archival object by ref_id.")
+
+    args = parser.parse_args()
+
+    if args.all:
+        update_all_webarchive_aos()
+    elif args.refid:
+        update_single_archival_object(args.refid)
+    else:
+        parser.print_help()
