@@ -290,10 +290,10 @@ def makeMultiNote(obj_dict, note_type, text, label=None):
         obj_dict["notes"].append(note)
 
 
+
 def update_or_create_note(obj_dict, note_type, expected_text, label=None):
     notes = obj_dict.get("notes", [])
     updated = False
-
     for note in notes:
         if (
             note.get("type") == note_type
@@ -308,9 +308,11 @@ def update_or_create_note(obj_dict, note_type, expected_text, label=None):
                         print("Note updated.")
                     else:
                         print("Note already matches.")
-                    return  # Exit after first matching note
+                    return updated  # Exit after first matching note
 
     # No matching note found — create a new one
     makeMultiNote(obj_dict, note_type, expected_text, label)
     print("New note created.")
+    return True
+
 
