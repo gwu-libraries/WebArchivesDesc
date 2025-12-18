@@ -54,8 +54,19 @@ def process_archival_object(obj_json, seeds, repo_id, subject):
         note1_changed = aspace_tools.update_or_create_note(obj_json, "phystech", Config.data_access_note_scrc, Config.data_access_label)
         note2_changed = aspace_tools.update_or_create_note(obj_json, "acqinfo", Config.acq_note_scrc, Config.acq_note_label)
 
-        #if any of the above = TRUE, an update is required. Post new AO
-        if any([dates_changed, extent_changed, note1_changed, note2_changed]):
+        # dictionary to map the change-flag to a name to help with debug
+        changes = {
+            "Dates": dates_changed,
+            "Extent": extent_changed,
+            "Note 1 (phystech)": note1_changed,
+            "Note 2 (acqinfo)": note2_changed
+        }
+
+        if any(changes.values()):
+            # Log exactly WHAT is causing the save
+            triggered_by = [name for name, status in changes.items() if status]
+            print(f"Update triggered for {uri} by: {', '.join(triggered_by)}")
+            
             response = aspace.client.post(uri, json=obj_json)
             print(f"Updated archival object {uri}: {response.status_code}")
             obj_json = aspace.client.get(uri).json()  # refetch to avoid conflicts

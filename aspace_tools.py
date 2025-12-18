@@ -299,7 +299,6 @@ def makeMultiNote(obj_dict, note_type, text, label=None):
 
 def update_or_create_note(obj_dict, note_type, expected_text, label=None):
     notes = obj_dict.get("notes", [])
-    updated = False
     for note in notes:
         if (
             note.get("type") == note_type
@@ -310,11 +309,9 @@ def update_or_create_note(obj_dict, note_type, expected_text, label=None):
                 if subnote.get("jsonmodel_type") == "note_text":
                     if subnote.get("content") != expected_text:
                         subnote["content"] = expected_text
-                        updated = True
-                        print("Note updated.")
+                        return True # Note updated
                     else:
-                        print("Note already matches.")
-                    return updated  # Exit after first matching note
+                        return False # No update needed
 
     # No matching note found — create a new one
     makeMultiNote(obj_dict, note_type, expected_text, label)
