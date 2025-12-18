@@ -49,7 +49,7 @@ def process_archival_object(obj_json, seeds, repo_id, subject):
         extent = len(records)
 
         #these aspace_tools functions return false/true depending on if they updated anything
-        dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
+        dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config.crawl_date_label)
         extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
         note1_changed = aspace_tools.update_or_create_note(obj_json, "phystech", Config.data_access_note_scrc, Config.data_access_label)
         note2_changed = aspace_tools.update_or_create_note(obj_json, "acqinfo", Config.acq_note_scrc, Config.acq_note_label)
