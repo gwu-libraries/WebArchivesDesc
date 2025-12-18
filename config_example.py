@@ -26,3 +26,5 @@ class Config:
     acq_note_scrc = "Web archives data was captured by the GW Web Archives program using Internet Archive's 'Archive-it' service."
     acq_note_ia = "Web Archives data was captured by the Internet Archive, not the GW web archiving program."
 
+    crawl_date_label = "Captured"
+

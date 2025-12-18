@@ -127,45 +127,51 @@ def link_dao_to_ao(dao_ref, ao_json, uri):
         print(f"Response text: {response.text}")
         return None
     
-def update_dates(ao_json, begin_date, end_date, date_expression, config):
+def update_dates(ao_json, begin_date, end_date, date_expression, crawl_date_label):
     """
-    Update or create the first date subrecord on the archival object JSON.
-    Returns True if changes were made, False otherwise.
+    Update or create a "captured" date subcrecord on the archival object JSON. 
     """
 
     dates = ao_json.get('dates', [])
 
-    if dates:
-        date_obj = dates[0]
+    #look for exsisting date subrecord that represents capture/crawl date information
+    target_date_obj = None
+    for date in dates:
+        #if an exsisting subrecord matches the label, use that one to check against web capture dates
+        if date.get('label') == crawl_date_label:
+            target_date_obj = date
+            break
+    #if found exsisting date subrecord, check if it needs to be updated
+    if target_date_obj:
         needs_update = False
 
-        if date_obj.get('begin') != begin_date:
-            date_obj['begin'] = begin_date
-            needs_update = True
+        if target_date_obj.get('begin') != begin_date:
+            target_date_obj['begin'] = begin_date
+            needs_update = True 
 
-        if date_obj.get('end') != end_date:
-            date_obj['end'] = end_date
-            needs_update = True
+        if target_date_obj.get('end') != end_date:
+            target_date_obj['end'] = end_date
+            needs_update = True 
 
-        if date_obj.get('expression') != date_expression:
-            date_obj['expression'] = date_expression
+        if target_date_obj.get('expression') != date_expression:
+            target_date_obj['expression'] = date_expression
             needs_update = True
-
+        
         return needs_update
-
-    else:
-        # No date subrecords exist — create one
-        new_date = {
+    else: #if no subrecord with a capture date label we sound then we need to create a new date subrecord to hold the web capture dates
+        new_capture_dates = {
             'jsonmodel_type': 'date',
-            'label' :  'creation',
             'date_type': 'inclusive',
+            'label': crawl_date_label,
             'begin': begin_date,
             'end': end_date,
-            'expression': date_expression,
+            'expression': date_expression
         }
-        ao_json['dates'] = [new_date]
-        return True
-    
+        ao_json['dates'].append(new_capture_dates)
+        return True  #new date created, so return true to indicate change made
+
+
+
 def update_extent(ao_json, new_extent_number, config):
     """
     Update or create extent subrecord on archival object JSON.
@@ -290,10 +296,9 @@ def makeMultiNote(obj_dict, note_type, text, label=None):
         obj_dict["notes"].append(note)
 
 
+
 def update_or_create_note(obj_dict, note_type, expected_text, label=None):
     notes = obj_dict.get("notes", [])
-    updated = False
-
     for note in notes:
         if (
             note.get("type") == note_type
@@ -304,13 +309,13 @@ def update_or_create_note(obj_dict, note_type, expected_text, label=None):
                 if subnote.get("jsonmodel_type") == "note_text":
                     if subnote.get("content") != expected_text:
                         subnote["content"] = expected_text
-                        updated = True
-                        print("Note updated.")
+                        return True # Note updated
                     else:
-                        print("Note already matches.")
-                    return  # Exit after first matching note
+                        return False # No update needed
 
     # No matching note found — create a new one
     makeMultiNote(obj_dict, note_type, expected_text, label)
     print("New note created.")
+    return True
+
 

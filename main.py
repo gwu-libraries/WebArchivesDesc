@@ -48,17 +48,30 @@ def process_archival_object(obj_json, seeds, repo_id, subject):
         date_expression = f"{begin_date} - {end_date}" if end_date else begin_date
         extent = len(records)
 
-        dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config)
+        #these aspace_tools functions return false/true depending on if they updated anything
+        dates_changed = aspace_tools.update_dates(obj_json, begin_date, end_date, date_expression, Config.crawl_date_label)
         extent_changed = aspace_tools.update_extent(obj_json, extent, Config)
+        note1_changed = aspace_tools.update_or_create_note(obj_json, "phystech", Config.data_access_note_scrc, Config.data_access_label)
+        note2_changed = aspace_tools.update_or_create_note(obj_json, "acqinfo", Config.acq_note_scrc, Config.acq_note_label)
 
-        # Update notes
-        aspace_tools.update_or_create_note(obj_json, "phystech", Config.data_access_note_scrc, Config.data_access_label)
-        aspace_tools.update_or_create_note(obj_json, "acqinfo", Config.acq_note_scrc, Config.acq_note_label)
+        # dictionary to map the change-flag to a name to help with debug
+        changes = {
+            "Dates": dates_changed,
+            "Extent": extent_changed,
+            "Note 1 (phystech)": note1_changed,
+            "Note 2 (acqinfo)": note2_changed
+        }
 
-        # Save the AO
-        response = aspace.client.post(uri, json=obj_json)
-        print(f"Updated archival object {uri}: {response.status_code}")
-        obj_json = aspace.client.get(uri).json()  # Re-fetch to avoid conflicts
+        if any(changes.values()):
+            # Log exactly WHAT is causing the save
+            triggered_by = [name for name, status in changes.items() if status]
+            print(f"Update triggered for {uri} by: {', '.join(triggered_by)}")
+            
+            response = aspace.client.post(uri, json=obj_json)
+            print(f"Updated archival object {uri}: {response.status_code}")
+            obj_json = aspace.client.get(uri).json()  # refetch to avoid conflicts
+        else:
+            print(f"No changes detected for {uri}. Skipping save.")
 
         # Update parent and resource record dates
         parent_json = aspace_tools.get_parent_json(obj_json)
@@ -77,9 +90,14 @@ def process_archival_object(obj_json, seeds, repo_id, subject):
 
         if dao_instances is None:
             print(f"No DAO attached to {uri}. Creating new DAO.")
-            dao_ref = aspace_tools.create_new_dao(wayback_uri, obj_json.get('ref_id'),
-                                                  f"Web Archives Replay Calendar - {note_url}",
-                                                  repo_id, obj_json, uri)
+            dao_ref = aspace_tools.create_new_dao(
+                wayback_uri,
+                obj_json.get('ref_id'),
+                f"Web Archives Replay Calendar - {note_url}",
+                repo_id,
+                obj_json,
+                uri
+            )
             aspace_tools.link_dao_to_ao(dao_ref, obj_json, uri)
         else:
             print("DAO already exists — skipping DAO creation.")
